@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ATMOS Weather</title>
+<style>
+:root{--bg:#252627;--panel:#343536;--text:#f6f6f6;--muted:#a9abad;--shadow:7px 7px 14px #171819,-5px -5px 14px #3a3b3c;--green:#49d20b}
+body.light{--bg:#d4d6d8;--panel:#d9dbdd;--text:#292a2b;--muted:#66696b;--shadow:7px 7px 14px #b4b6b8,-5px -5px 14px #f0f2f4}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif;transition:.3s}
+.app{max-width:1250px;margin:auto;padding:25px}
+.topbar{display:flex;align-items:center;gap:20px;margin-bottom:25px}
+.brand{font-weight:900;font-size:20px;letter-spacing:2px}
+.brand span{color:var(--green)}
+button{cursor:pointer;border:0;font-family:inherit}
+.theme{background:var(--panel);color:var(--text);box-shadow:var(--shadow);border-radius:30px;padding:10px 15px}
+.search{flex:1;display:flex;align-items:center;background:var(--panel);border-radius:30px;padding:0 15px;box-shadow:inset 4px 4px 8px #0002}
+.search input{width:100%;padding:12px;border:0;outline:0;background:transparent;color:var(--text)}
+.btn{background:var(--green);color:#102006;font-weight:bold;padding:12px 18px;border-radius:30px}
+.grid{display:grid;grid-template-columns:1fr 1.6fr;gap:22px}
+.left,.right{display:flex;flex-direction:column;gap:22px}
+.card{background:var(--panel);border-radius:18px;padding:22px;box-shadow:var(--shadow)}
+.clock{text-align:center;padding:35px 15px}
+.city{font-size:22px;font-weight:bold}
+.time{font-size:55px;font-weight:800;margin-top:15px}
+.date{color:var(--muted);font-size:12px}
+.current{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:15px}
+.temp{font-size:60px;font-weight:800}
+.feels{color:var(--muted);margin:5px 0 15px}
+.sun{font-size:65px;text-align:center;filter:drop-shadow(0 0 10px orange)}
+.condition{text-align:center;font-weight:bold}
+.metrics{display:grid;gap:12px;text-align:center;color:var(--muted);font-size:12px}
+.metrics strong{display:block;color:var(--text);font-size:14px}
+.section-title{text-align:center;font-size:17px;font-weight:bold;margin:0 0 18px}
+.days{display:grid;gap:14px}
+.day{display:grid;grid-template-columns:30px 1fr auto;align-items:center;gap:8px;font-size:12px}
+.day .ico{font-size:22px}
+.hours{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.hour{background:var(--bg);border-radius:14px;padding:12px 5px;text-align:center;font-size:11px}
+.hour .ico{font-size:25px;margin:10px 0}
+.hour b{display:block}
+.status{color:var(--muted);text-align:center;margin-top:20px}
+@media(max-width:850px){.grid{grid-template-columns:1fr}.topbar{flex-wrap:wrap}.search{order:3;flex-basis:100%}}
+@media(max-width:500px){
+.app{padding:15px}
+.current{grid-template-columns:1fr auto}
+.metrics{grid-column:1/-1;grid-template-columns:repeat(4,1fr)}
+.hours{grid-template-columns:repeat(3,1fr)}
+.hours .hour:nth-child(n+4){display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">ATMOS<span>.</span></div>
+    <button class="theme" id="theme">☾ Dark Mode</button>
+    <div class="search">🔍<input id="cityInput" placeholder="Search for your preferred city... (Enter)"></div>
+    <button class="btn" id="locBtn">◎ Current Location</button>
+  </header>
+
+  <div class="grid">
+    <section class="left">
+      <div class="card clock">
+        <div class="city" id="city">Tashkent</div>
+        <div class="time" id="time">--:--</div>
+        <div class="date" id="date">Loading...</div>
+      </div>
+      <div class="card">
+        <h3 class="section-title">5 Days Forecast</h3>
+        <div class="days" id="days"></div>
+      </div>
+    </section>
+
+    <section class="right">
+      <div class="card current">
+        <div>
+          <div class="temp"><span id="temp">--</span><span style="font-size:25px">°C</span></div>
+          <div class="feels">Feels like: <b id="feels">--°C</b></div>
+          <div style="font-size:12px">☀ Sunrise <b id="sunrise">--</b><br><br>☾ Sunset <b id="sunset">--</b></div>
+        </div>
+        <div class="condition">
+          <div class="sun" id="bigIcon">☀️</div>
+          <div id="condition">Clear</div>
+        </div>
+        <div class="metrics">
+          <div>Humidity<strong id="humidity">--%</strong></div>
+          <div>Wind<strong id="wind">-- km/h</strong></div>
+          <div>Pressure<strong id="pressure">-- hPa</strong></div>
+          <div>UV Index<strong id="uv">--</strong></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3 class="section-title">Hourly Forecast</h3>
+        <div class="hours" id="hours"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="status" id="status">Getting real-time weather...</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Saved place (falls back to Tashkent)
+let place = { lat: 41.2995, lon: 69.2401, name: "Tashkent" };
+try { const s = JSON.parse(localStorage.getItem("atmos_place")); if (s && s.lat) place = s; } catch (e) {}
+
+let tz = undefined;     // timezone of the selected city (from API)
+let loadId = 0;         // protects against out-of-order responses
+
+const icons = {0:"☀️",1:"🌤️",2:"⛅",3:"☁️",45:"🌫️",48:"🌫️",51:"🌦️",53:"🌦️",55:"🌧️",56:"🌧️",57:"🌧️",
+61:"🌧️",63:"🌧️",65:"🌧️",66:"🌧️",67:"🌧️",71:"🌨️",73:"❄️",75:"❄️",77:"❄️",80:"🌦️",81:"🌧️",82:"⛈️",85:"🌨️",86:"❄️",95:"⛈️",96:"⛈️",99:"⛈️"};
+
+function desc(c){
+  if(c===0) return "Clear sky";
+  if(c<=2) return "Partly cloudy";
+  if(c===3) return "Cloudy";
+  if(c<=48) return "Fog";
+  if(c<=57) return "Drizzle";
+  if(c<=67) return "Rain";
+  if(c<=77) return "Snow";
+  if(c<=82) return "Rain showers";
+  if(c<=86) return "Snow showers";
+  return "Thunderstorm";
+}
+function icon(c, isDay = 1){
+  if(!isDay && c <= 1) return "🌙";
+  if(!isDay && c === 2) return "☁️";
+  return icons[c] || "🌤️";
+}
+
+// Clock in the SELECTED city's timezone
+function clock(){
+  const d = new Date();
+  const opt = tz ? { timeZone: tz } : {};
+  $("time").textContent = d.toLocaleTimeString("en-GB", { ...opt, hour:"2-digit", minute:"2-digit", hour12:false });
+  $("date").textContent = d.toLocaleDateString("en-GB", { ...opt, weekday:"long", day:"numeric", month:"short" });
+}
+setInterval(clock, 1000);
+clock();
+
+$("theme").onclick = () => {
+  document.body.classList.toggle("light");
+  const light = document.body.classList.contains("light");
+  $("theme").textContent = light ? "☀ Light Mode" : "☾ Dark Mode";
+  try { localStorage.setItem("atmos_light", light ? "1" : "0"); } catch (e) {}
+};
+try { if (localStorage.getItem("atmos_light") === "1") $("theme").click(); } catch (e) {}
+
+async function loadWeather(){
+  const id = ++loadId;
+  $("status").textContent = "Loading live weather...";
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast"
+      + `?latitude=${place.lat}&longitude=${place.lon}`
+      + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,surface_pressure"
+      + "&hourly=temperature_2m,weather_code,wind_speed_10m,is_day"
+      + "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max"
+      + "&timezone=auto&forecast_days=5";
+
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    if(id !== loadId) return;
+
+    tz = d.timezone;
+    clock();
+
+    const c = d.current, day = d.daily;
+
+    $("city").textContent = place.name;
+    $("temp").textContent = Math.round(c.temperature_2m);
+    $("feels").textContent = Math.round(c.apparent_temperature) + "°C";
+    $("humidity").textContent = c.relative_humidity_2m + "%";
+    $("wind").textContent = Math.round(c.wind_speed_10m) + " km/h";
+    $("pressure").textContent = Math.round(c.surface_pressure) + " hPa";
+    $("uv").textContent = Math.round(day.uv_index_max[0]);
+    $("condition").textContent = desc(c.weather_code);
+    $("bigIcon").textContent = icon(c.weather_code, c.is_day);
+    $("sunrise").textContent = day.sunrise[0].slice(11,16);
+    $("sunset").textContent = day.sunset[0].slice(11,16);
+
+    $("days").innerHTML = day.time.map((date,i) => `
+      <div class="day">
+        <span class="ico">${icon(day.weather_code[i])}</span>
+        <span><b>${new Date(date+"T12:00").toLocaleDateString("en-GB",{weekday:"short"})}</b><br>${desc(day.weather_code[i])}</span>
+        <strong>${Math.round(day.temperature_2m_max[i])}° / ${Math.round(day.temperature_2m_min[i])}°</strong>
+      </div>`).join("");
+
+    // Hourly: times are in the city's local time, c.time too -> compare as strings
+    const times = d.hourly.time;
+    const nowHour = c.time.slice(0,13);
+    let idx = times.findIndex(t => t.slice(0,13) >= nowHour);
+    if(idx < 0) idx = 0;
+
+    $("hours").innerHTML = Array.from({length:5}, (_,i) => {
+      const j = idx + i;
+      if(j >= times.length) return "";
+      return `
+        <div class="hour">
+          <b>${times[j].slice(11,16)}</b>
+          <div class="ico">${icon(d.hourly.weather_code[j], d.hourly.is_day[j])}</div>
+          <b>${Math.round(d.hourly.temperature_2m[j])}°C</b>
+          <div>↗ ${Math.round(d.hourly.wind_speed_10m[j])} km/h</div>
+        </div>`;
+    }).join("");
+
+    $("status").textContent = "Live weather • Updated " + new Date().toLocaleTimeString();
+  } catch(e){
+    if(id !== loadId) return;
+    $("status").textContent = "Weather unavailable: " + (e && e.message ? e.message : e) + " | " + location.protocol + " | online=" + navigator.onLine;
+    console.error("Weather error:", e);
+  }
+}
+
+function savePlace(){
+  try { localStorage.setItem("atmos_place", JSON.stringify(place)); } catch (e) {}
+}
+
+async function searchCity(q){
+  if(!q.trim()) return;
+  $("status").textContent = "Searching city...";
+  let found = null;
+  try {
+    const r = await fetch("https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(q.trim()) + "&count=1&language=en&format=json");
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    if(d.results && d.results.length){
+      const x = d.results[0];
+      found = { lat: x.latitude, lon: x.longitude, name: x.name + (x.country ? ", " + x.country : "") };
+    }
+  } catch(e){
+    console.warn("Open-Meteo geocoding failed, trying Nominatim:", e);
+    try {
+      const r2 = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=en&q=" + encodeURIComponent(q.trim()));
+      const d2 = await r2.json();
+      if(d2.length){
+        found = { lat: +d2[0].lat, lon: +d2[0].lon, name: d2[0].display_name.split(",")[0] + ", " + d2[0].display_name.split(",").pop().trim() };
+      }
+    } catch(e2){
+      $("status").textContent = "Search failed (network): " + (e2.message || e2);
+      return;
+    }
+  }
+  if(!found){ $("status").textContent = "City not found. Try another name."; return; }
+  place = found;
+  savePlace();
+  $("cityInput").value = "";
+  loadWeather();
+}
+
+$("cityInput").addEventListener("keydown", e => { if(e.key === "Enter") searchCity(e.target.value); });
+
+$("locBtn").onclick = () => {
+  if(!navigator.geolocation){ $("status").textContent = "Geolocation not supported."; return; }
+  $("status").textContent = "Detecting your location...";
+  navigator.geolocation.getCurrentPosition(async p => {
+    const lat = p.coords.latitude, lon = p.coords.longitude;
+    let name = "Your location";
+    try {
+      // Open-Meteo has no reverse geocoding, so use BigDataCloud (free, no key)
+      const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+      const d = await r.json();
+      const n = d.city || d.locality || d.principalSubdivision;
+      if(n) name = n + (d.countryName ? ", " + d.countryName : "");
+    } catch(e){}
+    place = { lat, lon, name };
+    savePlace();
+    loadWeather();
+  }, () => {
+    $("status").textContent = "Location permission denied. Search for a city.";
+  }, { timeout: 10000 });
+};
+
+if(location.protocol !== "http:" && location.protocol !== "https:" && location.protocol !== "file:"){
+  $("status").textContent = "Bu sahifa preview ichida ochilgan. Faylni yuklab olib, brauzerda alohida oching.";
+}
+loadWeather();
+setInterval(loadWeather, 600000);
+</script>
+</body>
+</html>
